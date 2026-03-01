@@ -106,11 +106,20 @@ class TelegramSender:
         # =====================
         # SEND VIDEO → sendDocument
         # =====================
+        
         if enable_video and video is not None:
-            video_path = video  # biasanya VIDEO node sudah kasih path
 
-            if isinstance(video_path, list):
-                video_path = video_path[0]
+            # Kalau list ambil pertama
+            if isinstance(video, list):
+                video = video[0]
+
+            # Ambil path dari object VideoFromFile
+            if hasattr(video, "filename"):
+                video_path = video.filename
+            elif hasattr(video, "file"):
+                video_path = video.file
+            else:
+                raise Exception("VIDEO input tidak memiliki attribute filename/file")
 
             with open(video_path, "rb") as f:
                 url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
