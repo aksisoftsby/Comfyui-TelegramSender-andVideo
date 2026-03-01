@@ -17,10 +17,8 @@ class TelegramSender:
         return {
             "required": {
                 "images": ("IMAGE",),
-                "video": ("VIDEO",),
                 "chat_id": ("STRING", {"default": "", "multiline": False}),
                 "bot_token": ("STRING", {"default": "", "multiline": False}),
-                "enable_video": ("BOOLEAN", {"default": False}),
                 "enable_image": ("BOOLEAN", {"default": True}),
                 "enable_text": ("BOOLEAN", {"default": False}),
                 "text": ("STRING", {"default": "", "multiline": True}),
