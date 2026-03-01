@@ -12,7 +12,7 @@ class TelegramSenderVideo:
 
     RETURN_TYPES = ()
     FUNCTION = "send_video"
-    CATEGORY = "Telegram"
+    CATEGORY = "tools"
 
     def send_video(self, video, chat_id, bot_token):
 
