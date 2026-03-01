@@ -98,61 +98,83 @@ class TelegramSender:
         # ────────────────────────────────────────
         # 2. Kirim VIDEO jika di-enable
         # ────────────────────────────────────────
-        if enable_video and video is not None and len(video) > 0:
+        if enable_video and video is not None:
             try:
-                # Video tensor biasanya: [batch, frames, H, W, C]
-                if video.dim() == 5:
-                    video = video[0]  # ambil batch pertama
+                # VIDEO tensor di ComfyUI biasanya: [batch, frames, H, W, C]
+                if video.dim() != 5:
+                    print(f"Unexpected video tensor dimension: {video.dim()} (expected 5)")
+                    # bisa raise atau skip
+                    # raise ValueError("Video tensor harus 5 dimensi [B,F,H,W,C]")
 
-                frames = []
-                for frame in video:
-                    array = np.clip(255.0 * frame.cpu().numpy(), 0, 255).astype(np.uint8)
-                    frames.append(Image.fromarray(array))
+                if video.shape[0] > 1:
+                    print("Warning: video batch > 1, hanya mengambil batch pertama")
+                video = video[0]          # ambil batch index 0 → [F,H,W,C]
 
-                # Simpan sementara sebagai sequence gambar
-                frame_paths = []
-                for i, img in enumerate(frames):
-                    frame_path = os.path.join(temp_dir, f"frame_{i:06d}.png")
-                    img.save(frame_path)
-                    frame_paths.append(frame_path)
+                if video.shape[0] == 0:   # frames == 0
+                    print("Video tensor kosong (0 frames)")
+                else:
+                    frames = []
+                    for frame_idx in range(video.shape[0]):
+                        frame = video[frame_idx]                   # → [H,W,C]
+                        array = (frame.cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+                        frames.append(Image.fromarray(array))
 
-                video_path = os.path.join(temp_dir, f"video_{cur_date}.mp4")
+                    if not frames:
+                        print("Tidak ada frame yang valid untuk di-encode")
+                    else:
+                        # Simpan frame sementara
+                        frame_paths = []
+                        for i, img in enumerate(frames):
+                            frame_path = os.path.join(temp_dir, f"frame_{i:06d}.png")
+                            img.save(frame_path)
+                            frame_paths.append(frame_path)
 
-                # Pakai ffmpeg untuk encode (harus ada ffmpeg di sistem)
-                ffmpeg_cmd = [
-                    "ffmpeg",
-                    "-y",
-                    "-framerate", "24",                    # ← sesuaikan fps sesuai kebutuhan
-                    "-i", os.path.join(temp_dir, "frame_%06d.png"),
-                    "-c:v", "libx264",
-                    "-crf", str(video_crf),
-                    "-pix_fmt", "yuv420p",
-                    "-movflags", "+faststart",
-                    video_path
-                ]
+                        video_path = os.path.join(temp_dir, f"video_{cur_date}.mp4")
 
-                subprocess.run(ffmpeg_cmd, check=True, capture_output=True)
+                        # Cek apakah ffmpeg tersedia (opsional tapi bagus)
+                        try:
+                            subprocess.run(["ffmpeg", "-version"], capture_output=True, check=True)
+                        except:
+                            raise RuntimeError("ffmpeg tidak ditemukan di sistem. Install ffmpeg terlebih dahulu.")
 
-                # Kirim ke Telegram
-                with open(video_path, "rb") as f:
-                    url = f"https://api.telegram.org/bot{bot_token}/sendVideo"
-                    data = {
-                        "chat_id": chat_id,
-                        "caption": formatted_text,
-                        "parse_mode": "Markdown",
-                        "disable_notification": disable_notification,
-                        "protect_content": protect_content,
-                        "supports_streaming": True,
-                    }
-                    files = {"video": (os.path.basename(video_path), f, "video/mp4")}
-                    response = requests.post(url, data=data, files=files)
-                    response.raise_for_status()
+                        fps = 16   # bisa dibuat input parameter nanti
 
-                counter += 1
+                        ffmpeg_cmd = [
+                            "ffmpeg", "-y",
+                            "-framerate", str(fps),
+                            "-i", os.path.join(temp_dir, "frame_%06d.png"),
+                            "-c:v", "libx264",
+                            "-crf", str(video_crf),
+                            "-pix_fmt", "yuv420p",
+                            "-movflags", "+faststart",
+                            video_path
+                        ]
+
+                        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True)
+                        if result.returncode != 0:
+                            print("ffmpeg error:", result.stderr)
+                            raise RuntimeError("Gagal encode video dengan ffmpeg")
+
+                        # Kirim
+                        with open(video_path, "rb") as f:
+                            url = f"https://api.telegram.org/bot{bot_token}/sendVideo"
+                            data = {
+                                "chat_id": chat_id,
+                                "caption": formatted_text,
+                                "parse_mode": "Markdown",
+                                "disable_notification": str(disable_notification).lower(),
+                                "protect_content": str(protect_content).lower(),
+                                "supports_streaming": True,
+                            }
+                            files = {"video": (os.path.basename(video_path), f, "video/mp4")}
+                            response = requests.post(url, data=data, files=files)
+                            response.raise_for_status()
+
+                        counter += 1
 
             except Exception as e:
-                print(f"Error sending video: {str(e)}")
-                # lanjut saja ke image/text (tidak raise)
+                print(f"Error processing/sending video: {str(e)}")
+                # lanjut ke image/text
 
         # ────────────────────────────────────────
         # 3. Kirim IMAGE jika di-enable
