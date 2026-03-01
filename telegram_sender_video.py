@@ -1,12 +1,19 @@
 import requests
 import os
+from io import BytesIO
+
+# Tambahkan import ini kalau belum (biasanya sudah ada di ComfyUI context)
+try:
+    from comfy_api.latest._input_impl.video_types import VideoFromFile
+except ImportError:
+    VideoFromFile = None  # fallback kalau belum support
 
 class TelegramSenderVideo:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "video": ("VIDEO",),               # path str atau bytes
+                "video": ("VIDEO",),
                 "chat_id": ("STRING", {"default": ""}),
                 "bot_token": ("STRING", {"default": ""}),
             },
@@ -16,7 +23,7 @@ class TelegramSenderVideo:
             }
         }
 
-    RETURN_TYPES = ("STRING",)               # mengembalikan status pesan
+    RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("status",)
     FUNCTION = "send_video"
     CATEGORY = "tools"
@@ -26,48 +33,65 @@ class TelegramSenderVideo:
         if not bot_token or not chat_id:
             return ("❌ bot_token atau chat_id kosong",)
 
-        # Handle video input
-        if isinstance(video, str):           # path
-            if not os.path.isfile(video):
-                return (f"❌ File tidak ditemukan: {video}",)
-            video_file = open(video, "rb")
-            filesize_mb = os.path.getsize(video) / (1024 * 1024)
-        else:
-            # kalau suatu saat upstream kirim bytes
-            from io import BytesIO
-            video_file = BytesIO(video) if isinstance(video, bytes) else video
-            filesize_mb = len(video) / (1024 * 1024) if isinstance(video, bytes) else "?"
-
-        if filesize_mb != "?" and filesize_mb > 50:
-            # video_file.close()
-            return (f"❌ Video terlalu besar ({filesize_mb:.1f} MB). Telegram bot batas 50 MB.",)
-
         try:
+            # --- Handle berbagai tipe VIDEO input ---
+            if isinstance(video, str):  # plain path (legacy/old workflow)
+                if not os.path.isfile(video):
+                    return (f"❌ File tidak ditemukan: {video}",)
+                video_file = open(video, "rb")
+                filesize_mb = os.path.getsize(video) / (1024**2)
+
+            elif VideoFromFile and isinstance(video, VideoFromFile):  # ComfyUI modern VideoFromFile
+                video_file = video  # VideoFromFile sendiri file-like (punya .read(), dll)
+                # Coba cek ukuran kalau bisa (tidak semua support len/seek)
+                try:
+                    video_file.seek(0, os.SEEK_END)
+                    filesize_mb = video_file.tell() / (1024**2)
+                    video_file.seek(0)
+                except:
+                    filesize_mb = "?"  # tidak bisa cek size
+
+            elif isinstance(video, BytesIO):  # kalau suatu saat bytes langsung
+                video_file = video
+                filesize_mb = len(video.getvalue()) / (1024**2)
+
+            else:
+                return (f"❌ Tipe video tidak didukung: {type(video).__name__}",)
+
+            # Cek size (kalau bisa)
+            if filesize_mb != "?" and filesize_mb > 50:
+                if hasattr(video_file, 'close'):
+                    video_file.close()
+                return (f"❌ Video terlalu besar ({filesize_mb:.1f} MB) – Telegram bot max 50 MB.",)
+
             url = f"https://api.telegram.org/bot{bot_token}/sendVideo"
-            files = {"video": video_file}
+            files = {"video": video_file}  # VideoFromFile bisa langsung dipakai di requests.files
             data = {
                 "chat_id": chat_id,
                 "supports_streaming": str(supports_streaming).lower(),
             }
             if caption:
-                data["caption"] = caption[:1024]  # Telegram batas caption 1024 char
+                data["caption"] = caption[:1024]
 
-            with video_file:  # auto close
-                r = requests.post(url, data=data, files=files, timeout=90)
+            # Kirim request (timeout lebih panjang biar aman)
+            r = requests.post(url, data=data, files=files, timeout=120)
 
             if r.status_code == 200:
                 resp = r.json()
                 if resp.get("ok"):
-                    return (f"✅ Video terkirim (message_id: {resp['result']['message_id']})",)
+                    msg = f"✅ Terkirim (msg_id: {resp['result']['message_id']})"
+                    if filesize_mb != "?":
+                        msg += f" | size: {filesize_mb:.1f} MB"
+                    return (msg,)
                 else:
-                    return (f"❌ Telegram error: {resp.get('description')}",)
+                    return (f"❌ Telegram API error: {resp.get('description')}",)
             else:
-                return (f"❌ HTTP {r.status_code}: {r.text[:200]}",)
+                return (f"❌ HTTP {r.status_code}: {r.text[:300]}",)
 
-        except requests.Timeout:
-            return ("❌ Timeout – video terlalu besar / koneksi lambat",)
         except Exception as e:
-            return (f"❌ Exception: {str(e)}",)
+            return (f"❌ Error: {str(e)}",)
+
         finally:
-            if 'video_file' in locals() and not video_file.closed:
+            # Close hanya kalau punya method close DAN bukan VideoFromFile (karena VF manage sendiri)
+            if hasattr(video_file, 'close') and not (VideoFromFile and isinstance(video_file, VideoFromFile)):
                 video_file.close()
