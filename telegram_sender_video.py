@@ -39,7 +39,7 @@ class TelegramSenderVideo:
             filesize_mb = len(video) / (1024 * 1024) if isinstance(video, bytes) else "?"
 
         if filesize_mb != "?" and filesize_mb > 50:
-            video_file.close()
+            # video_file.close()
             return (f"❌ Video terlalu besar ({filesize_mb:.1f} MB). Telegram bot batas 50 MB.",)
 
         try:
