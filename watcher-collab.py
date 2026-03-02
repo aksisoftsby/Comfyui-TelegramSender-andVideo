@@ -26,7 +26,7 @@ def send_to_telegram(file_path):
 class Handler(FileSystemEventHandler):
     def on_created(self, event):
         if event.is_directory: return
-        time.sleep(3)  # kasih napas dulu
+        time.sleep(10)  # kasih napas dulu
         if os.path.exists(event.src_path):
             print("New file:", event.src_path)
             send_to_telegram(event.src_path)
