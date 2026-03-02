@@ -4,81 +4,44 @@ import requests
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-# ======================
-# CONFIG
-# ======================
-
-OUTPUT_FOLDER = "/root/ComfyUI/output"
+OUTPUT_FOLDER = "/content/ComfyUI/output"          # sesuaikan kalau beda
 BOT_TOKEN = "ISI_BOT_TOKEN_KAMU"
 CHAT_ID = "ISI_CHAT_ID_KAMU"
 
-# ======================
-# TELEGRAM SEND FUNCTION
-# ======================
-
 def send_to_telegram(file_path):
-    ext = os.path.splitext(file_path)[1].lower()
+    try:
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}"
+        with open(file_path, "rb") as f:
+            files = {"document": (os.path.basename(file_path), f)}
+            r = requests.post(
+                url + "/sendDocument",
+                data={"chat_id": CHAT_ID},
+                files=files,
+                timeout=25
+            )
+            print(file_path, "→", r.status_code, r.text[:100])
+    except Exception as e:
+        print("Gagal kirim:", file_path, str(e))
 
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}"
-
-    with open(file_path, "rb") as f:
-
-        if ext in [".jpg", ".jpeg", ".png", ".webp"]:
-            endpoint = "/sendPhoto"
-            files = {"photo": f}
-
-        elif ext in [".mp4", ".mov", ".mkv"]:
-            endpoint = "/sendDocument"   # atau sendVideo kalau mau streaming
-            files = {"document": f}
-
-        else:
-            endpoint = "/sendDocument"
-            files = {"document": f}
-
-        response = requests.post(
-            url + endpoint,
-            data={"chat_id": CHAT_ID},
-            files=files
-        )
-
-        print("Sent:", file_path, response.status_code)
-
-
-# ======================
-# WATCHDOG HANDLER
-# ======================
-
-class ComfyOutputHandler(FileSystemEventHandler):
-
+class Handler(FileSystemEventHandler):
     def on_created(self, event):
-        if event.is_directory:
-            return
-
-        file_path = event.src_path
-
-        # Tunggu file selesai ditulis
-        time.sleep(2)
-
-        if os.path.exists(file_path):
-            print("New file detected:", file_path)
-            send_to_telegram(file_path)
-
-
-# ======================
-# START WATCHER
-# ======================
+        if event.is_directory: return
+        time.sleep(3)  # kasih napas dulu
+        if os.path.exists(event.src_path):
+            print("New file:", event.src_path)
+            send_to_telegram(event.src_path)
 
 if __name__ == "__main__":
-    observer = Observer()
-    observer.schedule(ComfyOutputHandler(), OUTPUT_FOLDER, recursive=False)
-    observer.start()
-
-    print("Watching folder:", OUTPUT_FOLDER)
-
-    try:
-        while True:
-            time.sleep(5)
-    except KeyboardInterrupt:
-        observer.stop()
-
-    observer.join()
+    if not os.path.exists(OUTPUT_FOLDER):
+        print(f"Folder tidak ditemukan: {OUTPUT_FOLDER}")
+    else:
+        observer = Observer()
+        observer.schedule(Handler(), OUTPUT_FOLDER, recursive=False)
+        observer.start()
+        print(f"Memantau: {OUTPUT_FOLDER}")
+        try:
+            while True:
+                time.sleep(10)
+        except KeyboardInterrupt:
+            observer.stop()
+        observer.join()
