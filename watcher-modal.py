@@ -8,7 +8,7 @@ from watchdog.events import FileSystemEventHandler
 # CONFIG
 # ======================
 
-OUTPUT_FOLDER = "/content/ComfyUI/output"
+OUTPUT_FOLDER = "/root/ComfyUI/output"
 BOT_TOKEN = "ISI_BOT_TOKEN_KAMU"
 CHAT_ID = "ISI_CHAT_ID_KAMU"
 
