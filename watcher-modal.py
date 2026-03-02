@@ -4,7 +4,7 @@ import requests
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-OUTPUT_FOLDER = "/content/ComfyUI/output"          # sesuaikan kalau beda
+OUTPUT_FOLDER = "/root/ComfyUI/output"          # sesuaikan kalau beda
 BOT_TOKEN = "ISI_BOT_TOKEN_KAMU"
 CHAT_ID = "ISI_CHAT_ID_KAMU"
 
