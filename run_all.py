@@ -5,7 +5,7 @@ watcher = subprocess.Popen(["python", "watcher-modal.py"])
 watcher2 = subprocess.Popen(["python", "watcher-collab.py"])
 
 # Start ComfyUI
-comfy = subprocess.Popen(["python", "main.py", "--dont-print-server"])
+comfy = subprocess.Popen(["python", "main.py", "--dont-print-server", "--novram"])
 
 watcher.wait()
 watcher2.wait()
